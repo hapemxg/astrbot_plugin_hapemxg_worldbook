@@ -1,24 +1,118 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+# main.py (Final Version)
+
+import json
+from pathlib import Path
+from typing import Dict, Any, List
+
+# 导入AstrBot框架所需的核心库
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+from astrbot.api.provider import ProviderRequest
+from astrbot.api import AstrBotConfig
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
-class MyPlugin(Star):
-    def __init__(self, context: Context):
+# =================================================================
+# 1. 数据管理器 (Backend Logic)
+#    - 负责加载、管理和查询世界书数据。
+# =================================================================
+class WorldbookManager:
+    """世界书数据管理器"""
+    DATA_PATH = Path(__file__).parent / "data" 
+
+    def __init__(self):
+        self.DATA_PATH.mkdir(parents=True, exist_ok=True)
+        self.worldbook_data = {}
+        self._load_worldbook()
+
+    def _load_worldbook(self):
+        """从 data/Worldbook 目录下加载所有 .json 文件到内存中"""
+        self.worldbook_data = {}
+        print("[Worldbook-Manager] 开始加载世界书文件...")
+        for file_path in self.DATA_PATH.glob("*.json"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    entry = json.load(f)
+                    if "keywords" in entry and "content" in entry:
+                        self.worldbook_data[file_path.stem] = entry
+                        print(f"[Worldbook-Manager]  - 已加载条目: {file_path.stem}")
+                    else:
+                        print(f"[Worldbook-Manager]  - [警告] 文件 {file_path.name} 格式不正确，已跳过。")
+            except Exception as e:
+                print(f"[Worldbook-Manager]  - [错误] 加载文件 {file_path.name} 失败: {e}")
+        print(f"[Worldbook-Manager] 世界书加载完毕，共 {len(self.worldbook_data)} 个条目。")
+
+    def find_entries_in_text(self, text: str) -> List[str]:
+        """在给定的文本中查找匹配的关键词，并返回所有匹配条目的内容。"""
+        found_contents = []
+        if not text:
+            return found_contents
+        for entry_name, entry_data in self.worldbook_data.items():
+            for keyword in entry_data.get("keywords", []):
+                if keyword in text:
+                    found_contents.append(entry_data["content"])
+                    break
+        return found_contents
+
+# =================================================================
+# 2. 插件主类 (Frontend Logic)
+#    - 负责与 AstrBot 框架交互，处理事件和指令。
+# =================================================================
+@register("Worldbook", "hapemxg", "世界书插件", "1.2.0")
+class WorldbookPlugin(Star):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config
+        self.manager = WorldbookManager()
+        # 暂存区，Key 现在是可靠的“会话ID”
+        self.lore_to_inject: Dict[str, List[str]] = {}
 
-    async def initialize(self):
-        """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
-    
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
-        user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+    # --- 核心逻辑第一步：监听消息，检测关键词并暂存 ---
+    @filter.event_message_type(filter.EventMessageType.ALL)
+    async def on_any_message(self, event: AstrMessageEvent):
+        """监听所有消息，分析并决定是否需要为这个会话暂存知识。"""
+        # 使用 event.unified_msg_origin 作为稳定可靠的会话ID。
+        session_id = event.unified_msg_origin
+        user_message = event.message_str
+        
+        found_lore = self.manager.find_entries_in_text(user_message)
+        
+        if found_lore:
+            # 如果找到了关键词，就为这个会话ID暂存知识。
+            self.lore_to_inject[session_id] = found_lore
+            print(f"[Worldbook-Listener] Session {session_id}: 检测到关键词，暂存了 {len(found_lore)} 条知识。")
+        else:
+            # **关键的健壮性设计**
+            # 如果这次消息没有关键词，但暂存区里还留着这个会话上一次的知识，就清理掉它。
+            # 这可以防止用户上一句触发了关键词，下一句没触发时，旧知识还被错误地注入。
+            if session_id in self.lore_to_inject:
+                del self.lore_to_inject[session_id]
+                print(f"[Worldbook-Listener] Session {session_id}: 无关键词，已清理过期知识。")
 
-    async def terminate(self):
-        """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+    # --- 核心逻辑第二步：在LLM请求前，执行注入 ---
+    @filter.on_llm_request()
+    async def inject_worldbook_context(self, event: AstrMessageEvent, req: ProviderRequest):
+        """在LLM请求前，检查暂存区并注入知识。"""
+        # 同样使用 event.unified_msg_origin 来查找暂存的知识。
+        session_id = event.unified_msg_origin
+
+        if session_id in self.lore_to_inject:
+            lore_to_add = self.lore_to_inject[session_id]
+            
+            lore_prompt = "[系统指令：请严格根据以下背景知识来理解和回复用户的提问]\n"
+            for content in lore_to_add:
+                lore_prompt += f"--- 背景知识 ---\n{content}\n--- 背景知识结束 --- "
+            
+            req.system_prompt = lore_prompt + "\n" + req.system_prompt
+            print(f"[Worldbook-Injector] Session {session_id}: 成功注入了 {len(lore_to_add)} 条背景知识。")
+
+            # **至关重要**：注入后立即删除，确保“一次性使用”，避免污染。
+            del self.lore_to_inject[session_id]
+
+    # --- 管理指令 ---
+    @filter.command("重载世界书")
+    async def reload_worldbook(self, event: AstrMessageEvent):
+        """重新加载所有世界书文件。"""
+        try:
+            self.manager._load_worldbook()
+            yield event.plain_result("✅ 世界书数据已成功重载。")
+        except Exception as e:
+            yield event.plain_result(f"⚠️ 重载世界书失败：{e}")
