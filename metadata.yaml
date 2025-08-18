@@ -1,5 +1,5 @@
 name: hapemxg_worldbook # 这是你的插件的唯一识别名。
-desc: 这是 hapemxg 的世界书插件，不一定支持关键词回复。只保证能凑合用 不考虑优化
+desc: 这是 hapemxg 的世界书插件，不一定支持关键词回复。只保证能凑合用，不考虑优化
 version: v1.0 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: hapemxg # 作者
 repo: https://github.com/hapemxg/astrbot_plugin_hapemxg_worldbook # 插件的仓库地址
