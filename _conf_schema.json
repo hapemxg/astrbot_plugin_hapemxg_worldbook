@@ -1,0 +1,7 @@
+{
+  "enabled": {
+    "description": "是否启用世界书插件。关闭后，将不会在对话中注入任何背景知识。",
+    "type": "bool",
+    "default": true
+  }
+}
