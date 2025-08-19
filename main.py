@@ -27,7 +27,7 @@ class WorldbookManager:
         """从 data/Worldbook 目录下加载所有 .json 文件到内存中"""
         self.worldbook_data = {}
         print("[Worldbook-Manager] 开始加载世界书文件...")
-        for file_path in self.DATA_PATH.glob("*.json"):
+        for file_path in self.DATA_PATH.rglob("*.json"):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     entry = json.load(f)
