@@ -1,0 +1,15 @@
+{
+  "pet_name": "谟玛乌图",
+  "keywords": [
+    "粒子打击",
+    "谟玛乌图"
+  ],
+  "skill_info": {
+    "priority": 8,
+    "power": 55,
+    "pp": 20,
+    "type": "光",
+    "category": "物理"
+  },
+  "content": "技能：粒子打击\n给对手造成威力伤害，无其他效果。"
+}

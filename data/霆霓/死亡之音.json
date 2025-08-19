@@ -1,0 +1,15 @@
+{
+  "pet_name": "霆霓",
+  "keywords": [
+    "死亡之音",
+    "霆霓"
+  ],
+  "skill_info": {
+    "priority": 8,
+    "power": null,
+    "pp": 5,
+    "type": "普通",
+    "category": "变化"
+  },
+  "content": "技能：死亡之音\n使用后的第4回合对双方造成等同于各自当前精力值的固伤。\n对boss无效，对方换宠仍然有效。\n重复使用会重新计算回合。"
+}

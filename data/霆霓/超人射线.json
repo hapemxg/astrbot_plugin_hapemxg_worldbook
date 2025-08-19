@@ -1,0 +1,15 @@
+{
+  "pet_name": "霆霓",
+  "keywords": [
+    "超人射线",
+    "霆霓"
+  ],
+  "skill_info": {
+    "priority": 9,
+    "power": 120,
+    "pp": 10,
+    "type": "普通",
+    "category": "魔法"
+  },
+  "content": "技能：超人射线\n命中后删除对方全体技能2pp，清除对方正面强化再造成伤害（非强制）。"
+}
