@@ -1,4 +1,4 @@
-# main.py (Final Version with skill_info integration)
+# main.py (Final Version with skill_info integration and sorting logic)
 
 import json
 from pathlib import Path
@@ -41,7 +41,6 @@ class WorldbookManager:
                 print(f"[Worldbook-Manager]  - [错误] 加载文件 {file_path.name} 失败: {e}")
         print(f"[Worldbook-Manager] 世界书加载完毕，共 {len(self.worldbook_data)} 个条目。")
 
-    # <--- 修改点 1: 修改函数的返回值类型，从 List[str] 变为 List[Dict[str, Any]]
     def find_entries_in_text(self, text: str) -> List[Dict[str, Any]]:
         """在给定的文本中查找匹配的关键词，并返回所有匹配条目的完整数据。"""
         found_entries = []
@@ -50,7 +49,6 @@ class WorldbookManager:
         for entry_name, entry_data in self.worldbook_data.items():
             for keyword in entry_data.get("keywords", []):
                 if keyword in text:
-                    # <--- 修改点 1: 以前是 .append(entry_data["content"])，现在追加整个对象
                     found_entries.append(entry_data)
                     break
         return found_entries
@@ -59,13 +57,12 @@ class WorldbookManager:
 # 2. 插件主类 (Frontend Logic)
 #    - 负责与 AstrBot 框架交互，处理事件和指令。
 # =================================================================
-@register("Worldbook", "hapemxg", "世界书插件", "1.3.0") # 版本号可以升一下
+@register("Worldbook", "hapemxg", "世界书插件", "1.4.0") # 版本号可以升一下
 class WorldbookPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
         self.manager = WorldbookManager()
-        # <--- 修改点 2: 修改暂存区的类型，以存储完整的条目字典
         self.lore_to_inject: Dict[str, List[Dict[str, Any]]] = {}
 
     # --- 核心逻辑第一步：监听消息，检测关键词并暂存 ---
@@ -75,7 +72,6 @@ class WorldbookPlugin(Star):
         session_id = event.unified_msg_origin
         user_message = event.message_str
 
-        # `found_lore` 现在是包含完整字典的列表
         found_lore = self.manager.find_entries_in_text(user_message)
 
         if found_lore:
@@ -96,9 +92,13 @@ class WorldbookPlugin(Star):
             # lore_to_add 现在是字典的列表 List[Dict]
             lore_to_add = self.lore_to_inject[session_id]
 
+            # ======================= 核心优化点 =======================
+            # 根据 "content" 字段的字符长度进行降序排序 (长的在前)
+            lore_to_add.sort(key=lambda entry: len(entry.get('content', '')), reverse=True)
+            # ========================================================
+
             lore_prompt = "[系统指令：请根据以下背景知识来理解和回复用户的提问。重要规则：一个宠物只能同时携带一种血脉效果和四个技能。]\n"
 
-            # <--- 修改点 3: 重写注入逻辑以处理和格式化新数据
             for entry in lore_to_add:
                 lore_prompt += "--- 背景知识 ---\n"
                 
@@ -110,7 +110,7 @@ class WorldbookPlugin(Star):
                     info = entry['skill_info']
                     power_str = f"威力: {info.get('power')}" if info.get('power') is not None else "威力: ---"
                     pp_str = f"PP: {info.get('pp', '?')}"
-                    priority_str = f"先手: {info.get('priority', '?')}"
+                    priority_str = f"先手等级: {info.get('priority', '?')}"
                     type_str = f"属性: {info.get('type', '?')}"
                     category_str = f"类型: {info.get('category', '?')}"
                     
@@ -124,7 +124,7 @@ class WorldbookPlugin(Star):
                 lore_prompt += "--- 背景知识结束 ---\n"
 
             req.system_prompt = lore_prompt + "\n" + req.system_prompt
-            print(f"[Worldbook-Injector] Session {session_id}: 成功注入了 {len(lore_to_add)} 条背景知识。")
+            print(f"[Worldbook-Injector] Session {session_id}: 成功注入了 {len(lore_to_add)} 条背景知识 (已排序)。")
 
             del self.lore_to_inject[session_id]
 
